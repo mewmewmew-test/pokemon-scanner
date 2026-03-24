@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Pokémon Card Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  /* ── RESET & BASE ─────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --red:      #CC0000;
+    --red-dark: #990000;
+    --gold:     #FFD700;
+    --gold-dim: #997F00;
+    --black:    #0A0A0A;
+    --surface:  #161616;
+    --surface2: #1E1E1E;
+    --border:   #2A2A2A;
+    --text:     #F0F0F0;
+    --muted:    #666;
+    --green:    #22C55E;
+    --safe:     env(safe-area-inset-bottom, 16px);
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--black);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── SCREEN MANAGER ───────────────────────────────── */
+  .screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s ease;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .screen.hidden    { transform: translateX(100%); opacity: 0; pointer-events: none; }
+  .screen.slide-out { transform: translateX(-40%);  opacity: 0; pointer-events: none; }
+
+  /* ── TOP BAR ──────────────────────────────────────── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 52px 20px 16px;
+    background: linear-gradient(180deg, rgba(10,10,10,0.98) 0%, rgba(10,10,10,0.0) 100%);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .topbar-title {
+    font-family: 'Bangers', cursive;
+    font-size: 1.4rem;
+    letter-spacing: 2px;
+    color: var(--text);
+  }
+  .topbar-title span { color: var(--gold); }
+  .back-btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 0;
+  }
+  .back-btn:active { color: var(--gold); }
+
+  /* ── HOME SCREEN ──────────────────────────────────── */
+  #screen-home {
+    padding: 0 0 calc(var(--safe) + 20px);
+    background: var(--black);
+  }
+
+  .home-hero {
+    padding: 56px 24px 32px;
+    text-align: center;
+    position: relative;
+  }
+  .home-hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(204,0,0,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .pokeball-big {
+    width: 80px; height: 80px;
+    margin: 0 auto 20px;
+    position: relative;
+  }
+  .pokeball-big svg { width: 100%; height: 100%; }
+
+  .home-title {
+    font-family: 'Bangers', cursive;
+    font-size: 2.6rem;
+    letter-spacing: 3px;
+    line-height: 1;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .home-title span { color: var(--red); }
+  .home-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* Config badge */
+  .config-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 20px auto 0;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .config-badge.configured   { background: rgba(34,197,94,0.1);  border: 1px solid rgba(34,197,94,0.3);  color: #86efac; }
+  .config-badge.unconfigured { background: rgba(204,0,0,0.1);    border: 1px solid rgba(204,0,0,0.3);    color: #fca5a5; }
+  .config-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .configured .config-dot   { background: var(--green); }
+  .unconfigured .config-dot { background: var(--red); }
+
+  /* Action tiles */
+  .action-grid {
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .action-tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+    overflow: hidden;
+  }
+  .action-tile::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .action-tile:active::before { opacity: 1; }
+  .action-tile.primary { border-color: rgba(204,0,0,0.4); }
+  .action-tile.primary::before { background: rgba(204,0,0,0.06); }
+  .action-tile.secondary::before { background: rgba(255,255,255,0.03); }
+
+  .tile-icon {
+    width: 48px; height: 48px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+  }
+  .tile-icon.red  { background: rgba(204,0,0,0.15);   }
+  .tile-icon.gold { background: rgba(255,215,0,0.12); }
+  .tile-icon.blue { background: rgba(59,130,246,0.12); }
+
+  .tile-body { flex: 1; }
+  .tile-title {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .tile-desc {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .tile-arrow {
+    color: var(--border);
+    font-size: 1.2rem;
+  }
+
+  /* ── SETUP SCREEN ─────────────────────────────────── */
+  #screen-setup { background: var(--black); padding-bottom: calc(var(--safe) + 20px); }
+  .setup-body { padding: 0 20px 20px; }
+  .setup-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 14px;
+  }
+  .setup-section-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--gold);
+    margin-bottom: 12px;
+  }
+  .setup-field { margin-bottom: 14px; }
+  .setup-field:last-child { margin-bottom: 0; }
+  .setup-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+    display: block;
+  }
+  .setup-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.82rem;
+    padding: 12px 14px;
+    outline: none;
+    transition: border-color 0.2s;
+    -webkit-appearance: none;
+  }
+  .setup-input:focus { border-color: var(--gold); }
+  .setup-input::placeholder { color: #3a3a3a; }
+  .setup-note {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--muted);
+    line-height: 1.6;
+    margin-top: 8px;
+  }
+  .setup-note a { color: var(--gold); text-decoration: none; }
+
+  /* ── SCAN SCREEN ──────────────────────────────────── */
+  #screen-scan { background: var(--black); padding-bottom: calc(var(--safe) + 16px); }
+
+  .camera-wrap {
+    position: relative;
+    width: 100%;
+    background: #000;
+    overflow: hidden;
+  }
+  .camera-wrap video {
+    width: 100%;
+    display: block;
+    max-height: 55vh;
+    object-fit: cover;
+  }
+
+  /* Card overlay frame */
+  .camera-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .card-frame {
+    width: 58%;
+    aspect-ratio: 63/88;
+    border: 2px solid rgba(255,215,0,0.7);
+    border-radius: 8px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.45), 0 0 20px rgba(255,215,0,0.2);
+    position: relative;
+  }
+  .card-frame::before, .card-frame::after,
+  .card-frame .corner-br, .card-frame .corner-bl {
+    content: '';
+    position: absolute;
+    width: 16px; height: 16px;
+    border-color: var(--gold);
+    border-style: solid;
+  }
+  .card-frame::before  { top: -2px;    left: -2px;    border-width: 3px 0 0 3px; border-radius: 8px 0 0 0; }
+  .card-frame::after   { top: -2px;    right: -2px;   border-width: 3px 3px 0 0; border-radius: 0 8px 0 0; }
+  .card-frame .corner-br { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-radius: 0 0 8px 0; }
+  .card-frame .corner-bl { bottom: -2px; left: -2px;  border-width: 0 0 3px 3px; border-radius: 0 0 0 8px; }
+
+  .cam-hint {
+    position: absolute;
+    bottom: 12px;
+    left: 0; right: 0;
+    text-align: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 1px;
+  }
+
+  /* Captured preview */
+  #capturedPreview {
+    width: 100%;
+    display: none;
+    max-height: 55vh;
+    object-fit: contain;
+    background: #000;
+  }
+
+  .scan-controls {
+    padding: 16px 16px 0;
+    display: flex;
+    gap: 10px;
+  }
+  .scan-controls .btn { flex: 1; margin-top: 0; }
+
+  /* ── RESULTS SCREEN ───────────────────────────────── */
+  #screen-results { background: var(--black); padding-bottom: calc(var(--safe) + 20px); }
+  .results-body { padding: 0 16px 20px; }
+
+  .id-banner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .id-banner-icon { font-size: 1.3rem; }
+  .id-banner-text { flex: 1; }
+  .id-banner-title { font-weight: 600; font-size: 0.9rem; color: var(--text); }
+  .id-banner-sub { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--muted); margin-top: 2px; }
+  .id-banner.low { border-color: rgba(251,191,36,0.3); background: rgba(251,191,36,0.05); }
+  .id-banner.high { border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.05); }
+
+  .results-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .card-result {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+    display: flex;
+    gap: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .card-result:active, .card-result.selected { border-color: var(--gold); background: rgba(255,215,0,0.04); }
+  .card-result-img { width: 52px; height: 72px; border-radius: 6px; object-fit: cover; background: var(--surface2); flex-shrink: 0; }
+  .card-result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+  .card-result-name { font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-result-set  { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--muted); margin-top: 3px; }
+  .card-result-meta { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--gold); margin-top: 2px; }
+  .card-result-price { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: #86efac; margin-top: 2px; }
+  .card-result-check {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    flex-shrink: 0;
+    align-self: center;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .card-result.selected .card-result-check { background: var(--gold); border-color: var(--gold); color: #000; font-size: 0.7rem; }
+
+  /* ── INSERT SCREEN ────────────────────────────────── */
+  #screen-insert { background: var(--black); padding-bottom: calc(var(--safe) + 20px); }
+  .insert-body { padding: 0 16px 20px; }
+
+  .selected-card-preview {
+    display: flex;
+    gap: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 18px;
+  }
+  .selected-card-preview img { width: 64px; border-radius: 8px; }
+  .selected-card-preview-body { flex: 1; }
+  .selected-card-preview-name { font-family: 'Bangers', cursive; font-size: 1.3rem; letter-spacing: 1px; color: var(--text); line-height: 1; }
+  .selected-card-preview-set  { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--muted); margin-top: 4px; }
+
+  .insert-section { margin-bottom: 18px; }
+  .insert-section-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--gold);
+    margin-bottom: 10px;
+  }
+
+  /* Foil pills */
+  .foil-pills { display: flex; gap: 8px; }
+  .foil-pill {
+    flex: 1; text-align: center;
+    font-family: 'DM Mono', monospace; font-size: 0.68rem;
+    padding: 8px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    transition: all 0.15s;
+  }
+  .foil-pill.active { border-color: var(--gold); background: rgba(255,215,0,0.08); color: var(--gold); }
+  .foil-pill.disabled { opacity: 0.25; pointer-events: none; }
+
+  /* Condition rows */
+  .cond-row {
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 11px 14px; margin-bottom: 8px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .cond-row:active, .cond-row.sel { border-color: var(--gold); background: rgba(255,215,0,0.05); }
+  .cond-row.na { opacity: 0.3; pointer-events: none; }
+  .cond-name { font-size: 0.85rem; }
+  .cond-price { font-family: 'DM Mono', monospace; font-size: 0.85rem; color: #86efac; font-weight: 500; }
+  .cond-price.na { color: var(--muted); }
+
+  /* ── SHARED COMPONENTS ────────────────────────────── */
+  .btn {
+    display: block; width: 100%;
+    padding: 15px;
+    border: none; border-radius: 12px;
+    font-family: 'Bangers', cursive;
+    font-size: 1.15rem; letter-spacing: 2px;
+    cursor: pointer; transition: all 0.15s;
+    text-align: center;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-primary { background: var(--red); color: #fff; }
+  .btn-primary:active { background: var(--red-dark); }
+  .btn-confirm { background: #166534; border: 1px solid #22c55e; color: #86efac; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 0.9rem; letter-spacing: 0; }
+
+  .status-msg {
+    font-family: 'DM Mono', monospace; font-size: 0.72rem;
+    text-align: center; padding: 12px; border-radius: 10px; margin-top: 12px;
+  }
+  .status-msg.loading { color: var(--muted); }
+  .status-msg.err { background: rgba(204,0,0,0.12); border: 1px solid rgba(204,0,0,0.3); color: #fca5a5; }
+  .status-msg.ok  { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #86efac; }
+  .status-msg.info { background: rgba(255,215,0,0.07); border: 1px solid rgba(255,215,0,0.2); color: #fde68a; }
+
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #333; border-top-color: var(--gold); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 5px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .px-16 { padding: 0 16px; }
+  .mt-12 { margin-top: 12px; }
+  .mb-16 { margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SCREEN: HOME                                             -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div id="screen-home" class="screen">
+  <div class="home-hero">
+    <div class="pokeball-big">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="48" fill="none" stroke="#2a2a2a" stroke-width="3"/>
+        <path d="M2 50 Q2 2 50 2 Q98 2 98 50Z" fill="#CC0000" opacity="0.9"/>
+        <path d="M2 50 Q2 98 50 98 Q98 98 98 50Z" fill="#1a1a1a"/>
+        <rect x="2" y="47" width="96" height="6" fill="#2a2a2a"/>
+        <circle cx="50" cy="50" r="13" fill="#222" stroke="#2a2a2a" stroke-width="3"/>
+        <circle cx="50" cy="50" r="7" fill="#333"/>
+      </svg>
+    </div>
+    <div class="home-title">CARD<span>SCAN</span></div>
+    <div class="home-sub">Pokémon Collection Scanner</div>
+    <div id="configBadge" class="config-badge unconfigured" onclick="goTo('setup')">
+      <div class="config-dot"></div>
+      <span id="configBadgeText">Setup required</span>
+    </div>
+  </div>
+
+  <div class="action-grid">
+    <div class="action-tile primary" onclick="startScan()">
+      <div class="tile-icon red">📷</div>
+      <div class="tile-body">
+        <div class="tile-title">Scan Card</div>
+        <div class="tile-desc">Point camera at a card to identify &amp; add to collection</div>
+      </div>
+      <div class="tile-arrow">›</div>
+    </div>
+
+    <div class="action-tile secondary" onclick="goTo('setup')">
+      <div class="tile-icon gold">⚙️</div>
+      <div class="tile-body">
+        <div class="tile-title">Settings</div>
+        <div class="tile-desc">API keys &amp; Google Sheet ID</div>
+      </div>
+      <div class="tile-arrow">›</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SCREEN: SETUP                                            -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div id="screen-setup" class="screen hidden">
+  <div class="topbar">
+    <button class="back-btn" onclick="goBack()">‹ Back</button>
+    <div class="topbar-title">⚙️ <span>Setup</span></div>
+    <div style="width:48px"></div>
+  </div>
+  <div class="setup-body">
+
+    <div class="setup-section">
+      <div class="setup-section-title">Anthropic API Key</div>
+      <div class="setup-field">
+        <label class="setup-label">API Key (for card identification)</label>
+        <input class="setup-input" id="anthropicKey" type="password" placeholder="sk-ant-..." autocomplete="off" />
+        <div class="setup-note">
+          Get your key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a><br>
+          Stored locally on your device only.
+        </div>
+      </div>
+    </div>
+
+    <div class="setup-section">
+      <div class="setup-section-title">Google Sheets</div>
+      <div class="setup-field">
+        <label class="setup-label">Spreadsheet ID</label>
+        <input class="setup-input" id="sheetId" type="text" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" autocomplete="off"/>
+        <div class="setup-note">
+          Found in your Sheet URL:<br>
+          docs.google.com/spreadsheets/d/<strong style="color:#fde68a">SPREADSHEET_ID</strong>/edit
+        </div>
+      </div>
+      <div class="setup-field">
+        <label class="setup-label">Google OAuth Client ID</label>
+        <input class="setup-input" id="googleClientId" type="text" placeholder="123456789-abc.apps.googleusercontent.com" autocomplete="off"/>
+        <div class="setup-note">
+          Create at <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a> →
+          APIs &amp; Services → Credentials → OAuth 2.0 Client ID (Web application).<br>
+          Add your GitHub Pages URL as an authorised JavaScript origin.
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" onclick="saveSettings()">SAVE SETTINGS</button>
+    <div id="setupStatus"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SCREEN: SCAN                                             -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div id="screen-scan" class="screen hidden">
+  <div class="topbar" style="position:absolute;top:0;left:0;right:0;z-index:10;">
+    <button class="back-btn" style="color:rgba(255,255,255,0.7)" onclick="stopScan()">‹ Back</button>
+    <div class="topbar-title" style="color:#fff;">📷 <span>Scan</span></div>
+    <div style="width:48px"></div>
+  </div>
+
+  <div class="camera-wrap" id="cameraWrap">
+    <video id="camVideo" autoplay playsinline muted></video>
+    <canvas id="camCanvas" style="display:none"></canvas>
+    <div class="camera-overlay">
+      <div class="card-frame">
+        <div class="corner-br"></div>
+        <div class="corner-bl"></div>
+      </div>
+    </div>
+    <div class="cam-hint">Align card within frame</div>
+  </div>
+
+  <img id="capturedPreview" alt="Captured card" />
+
+  <div class="scan-controls">
+    <button class="btn btn-outline" id="retakeBtn" onclick="retake()" style="display:none">↩ Retake</button>
+    <button class="btn btn-primary" id="snapBtn" onclick="snapPhoto()">⚪ SNAP</button>
+  </div>
+
+  <div class="px-16 mt-12">
+    <div id="scanStatus"></div>
+    <button class="btn btn-confirm mt-12" id="identifyBtn" onclick="identifyCard()" style="display:none">
+      🔍 IDENTIFY CARD
+    </button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SCREEN: RESULTS                                          -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div id="screen-results" class="screen hidden">
+  <div class="topbar">
+    <button class="back-btn" onclick="goTo('scan'); retake()">‹ Rescan</button>
+    <div class="topbar-title">🎴 <span>Results</span></div>
+    <div style="width:48px"></div>
+  </div>
+  <div class="results-body">
+    <div id="idBanner"></div>
+    <div class="results-label">Select the correct card</div>
+    <div id="resultsList"></div>
+    <button class="btn btn-confirm mt-12" id="confirmBtn" onclick="goToInsert()" disabled>
+      ✦ CONFIRM SELECTION
+    </button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SCREEN: INSERT                                           -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div id="screen-insert" class="screen hidden">
+  <div class="topbar">
+    <button class="back-btn" onclick="goTo('results')">‹ Results</button>
+    <div class="topbar-title">➕ <span>Add Card</span></div>
+    <div style="width:48px"></div>
+  </div>
+  <div class="insert-body">
+    <div id="insertCardPreview" class="selected-card-preview"></div>
+
+    <div class="insert-section">
+      <div class="insert-section-title">Foil / Variant</div>
+      <div class="foil-pills">
+        <div class="foil-pill" id="fp-holo"    onclick="setFoil('holo')">Holofoil</div>
+        <div class="foil-pill" id="fp-normal"  onclick="setFoil('normal')">Normal</div>
+        <div class="foil-pill" id="fp-reverse" onclick="setFoil('reverse')">Reverse</div>
+      </div>
+    </div>
+
+    <div class="insert-section">
+      <div class="insert-section-title">Condition → Current Value</div>
+      <div id="condRows"></div>
+    </div>
+
+    <button class="btn btn-primary" id="insertBtn" onclick="insertCard()">
+      ➕ ADD TO COLLECTION
+    </button>
+    <div id="insertStatus"></div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// CONFIG & STATE
+// ════════════════════════════════════════════════════════════
+var CFG = {
+  anthropicKey:  localStorage.getItem('pkmn_anthropic_key')  || '',
+  sheetId:       localStorage.getItem('pkmn_sheet_id')       || '',
+  googleClientId:localStorage.getItem('pkmn_google_client_id')|| '',
+};
+var googleToken = null;
+var capturedB64 = null;
+var allCards    = [];
+var selectedCard = null;
+var selectedPrice = null;
+var selectedFoil  = null;
+
+var PRICE_MAP = {
+  holo:    {low:'priceHoloLow',   mid:'priceHoloMid',   market:'priceHoloMarket',  high:'priceHoloHigh'},
+  normal:  {low:'priceNormLow',   mid:'priceNormMid',   market:'priceNormMarket',  high:'priceNormHigh'},
+  reverse: {low:'priceRevLow',    mid:'priceRevMid',    market:'priceRevMarket',   high:'priceRevHigh'},
+};
+var CONDITIONS = [
+  {key:'low',    label:'Heavily Played / Damaged'},
+  {key:'mid',    label:'Played / Lightly Played'},
+  {key:'market', label:'Near Mint (Market)'},
+  {key:'high',   label:'Mint / PSA'},
+];
+
+// ════════════════════════════════════════════════════════════
+// NAVIGATION
+// ════════════════════════════════════════════════════════════
+var screenHistory = ['home'];
+
+function goTo(name) {
+  var cur = screenHistory[screenHistory.length - 1];
+  if (cur === name) return;
+  var curEl = document.getElementById('screen-' + cur);
+  var newEl = document.getElementById('screen-' + name);
+  curEl.classList.add('slide-out');
+  newEl.classList.remove('hidden');
+  setTimeout(function(){ curEl.classList.add('hidden'); curEl.classList.remove('slide-out'); }, 350);
+  screenHistory.push(name);
+}
+
+function goBack() {
+  if (screenHistory.length <= 1) return;
+  var cur  = screenHistory.pop();
+  var prev = screenHistory[screenHistory.length - 1];
+  var curEl  = document.getElementById('screen-' + cur);
+  var prevEl = document.getElementById('screen-' + prev);
+  curEl.classList.add('hidden');
+  prevEl.classList.remove('hidden', 'slide-out');
+}
+
+// ════════════════════════════════════════════════════════════
+// HOME
+// ════════════════════════════════════════════════════════════
+function updateConfigBadge() {
+  var badge = document.getElementById('configBadge');
+  var text  = document.getElementById('configBadgeText');
+  if (CFG.anthropicKey && CFG.sheetId && CFG.googleClientId) {
+    badge.className = 'config-badge configured';
+    text.textContent = 'Configured ✓';
+  } else {
+    badge.className = 'config-badge unconfigured';
+    text.textContent = 'Setup required';
+  }
+}
+
+function startScan() {
+  if (!CFG.anthropicKey || !CFG.sheetId || !CFG.googleClientId) {
+    goTo('setup');
+    return;
+  }
+  goTo('scan');
+  startCamera();
+}
+
+// ════════════════════════════════════════════════════════════
+// SETUP
+// ════════════════════════════════════════════════════════════
+function saveSettings() {
+  CFG.anthropicKey   = document.getElementById('anthropicKey').value.trim();
+  CFG.sheetId        = document.getElementById('sheetId').value.trim();
+  CFG.googleClientId = document.getElementById('googleClientId').value.trim();
+  localStorage.setItem('pkmn_anthropic_key',   CFG.anthropicKey);
+  localStorage.setItem('pkmn_sheet_id',        CFG.sheetId);
+  localStorage.setItem('pkmn_google_client_id',CFG.googleClientId);
+  document.getElementById('setupStatus').innerHTML =
+    '<div class="status-msg ok">✓ Settings saved</div>';
+  updateConfigBadge();
+  setTimeout(function(){ goBack(); }, 800);
+}
+
+// Pre-fill fields on load
+window.addEventListener('load', function() {
+  document.getElementById('anthropicKey').value   = CFG.anthropicKey;
+  document.getElementById('sheetId').value        = CFG.sheetId;
+  document.getElementById('googleClientId').value = CFG.googleClientId;
+  updateConfigBadge();
+  loadGoogleAuth();
+});
+
+// ════════════════════════════════════════════════════════════
+// GOOGLE AUTH (GSI)
+// ════════════════════════════════════════════════════════════
+function loadGoogleAuth() {
+  if (!CFG.googleClientId) return;
+  var script = document.createElement('script');
+  script.src = 'https://accounts.google.com/gsi/client';
+  script.onload = function() { initGoogleAuth(); };
+  document.head.appendChild(script);
+}
+
+function initGoogleAuth() {
+  if (!window.google || !CFG.googleClientId) return;
+  google.accounts.oauth2.initTokenClient({
+    client_id: CFG.googleClientId,
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    callback: function(resp) {
+      if (resp.access_token) {
+        googleToken = resp.access_token;
+        console.log('Google auth OK');
+      }
+    }
+  });
+}
+
+function ensureGoogleToken(cb) {
+  if (googleToken) { cb(); return; }
+  if (!window.google || !CFG.googleClientId) {
+    alert('Google not configured. Please set your OAuth Client ID in Settings.');
+    return;
+  }
+  var client = google.accounts.oauth2.initTokenClient({
+    client_id: CFG.googleClientId,
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    callback: function(resp) {
+      if (resp.access_token) { googleToken = resp.access_token; cb(); }
+      else { alert('Google sign-in failed. Please try again.'); }
+    }
+  });
+  client.requestAccessToken();
+}
+
+// ════════════════════════════════════════════════════════════
+// CAMERA
+// ════════════════════════════════════════════════════════════
+var camStream = null;
+
+function startCamera() {
+  var video   = document.getElementById('camVideo');
+  var preview = document.getElementById('capturedPreview');
+  preview.style.display = 'none';
+  video.style.display   = 'block';
+  document.getElementById('cameraWrap').style.display = 'block';
+  document.getElementById('snapBtn').style.display    = 'block';
+  document.getElementById('retakeBtn').style.display  = 'none';
+  document.getElementById('identifyBtn').style.display = 'none';
+  document.getElementById('scanStatus').innerHTML = '';
+  capturedB64 = null;
+
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+    audio: false
+  }).then(function(s) {
+    camStream = s;
+    video.srcObject = s;
+  }).catch(function(e) {
+    document.getElementById('scanStatus').innerHTML =
+      '<div class="status-msg err">Camera error: ' + e.message + '</div>';
+  });
+}
+
+function stopCameraStream() {
+  if (camStream) {
+    camStream.getTracks().forEach(function(t){ t.stop(); });
+    camStream = null;
+  }
+}
+
+function stopScan() {
+  stopCameraStream();
+  goBack();
+}
+
+function snapPhoto() {
+  var video  = document.getElementById('camVideo');
+  var canvas = document.getElementById('camCanvas');
+  canvas.width  = video.videoWidth  || 640;
+  canvas.height = video.videoHeight || 480;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  capturedB64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+
+  var preview = document.getElementById('capturedPreview');
+  preview.src = 'data:image/jpeg;base64,' + capturedB64;
+  preview.style.display = 'block';
+
+  document.getElementById('camVideo').style.display   = 'none';
+  document.getElementById('cameraWrap').querySelector('.camera-overlay').style.display = 'none';
+  document.getElementById('snapBtn').style.display    = 'none';
+  document.getElementById('retakeBtn').style.display  = 'block';
+  document.getElementById('identifyBtn').style.display = 'block';
+  document.getElementById('scanStatus').innerHTML =
+    '<div class="status-msg info">📸 Photo taken — tap Identify Card when ready</div>';
+
+  stopCameraStream();
+}
+
+function retake() {
+  document.getElementById('capturedPreview').style.display = 'none';
+  document.getElementById('cameraWrap').querySelector('.camera-overlay').style.display = 'flex';
+  document.getElementById('identifyBtn').style.display = 'none';
+  document.getElementById('retakeBtn').style.display   = 'none';
+  document.getElementById('scanStatus').innerHTML = '';
+  capturedB64 = null;
+  startCamera();
+}
+
+// ════════════════════════════════════════════════════════════
+// CARD IDENTIFICATION (Claude Vision)
+// ════════════════════════════════════════════════════════════
+async function identifyCard() {
+  if (!capturedB64) return;
+  document.getElementById('identifyBtn').disabled = true;
+  document.getElementById('scanStatus').innerHTML =
+    '<div class="status-msg loading"><span class="spinner"></span>Identifying card...</div>';
+
+  try {
+    var res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': CFG.anthropicKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 256,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: capturedB64 } },
+            { type: 'text',  text: 'This is a Pokemon trading card. Return ONLY a JSON object, no markdown: {"cardName":"exact name on card","setName":"set name","setNumber":"e.g. 4/102","confidence":"high/medium/low"}' }
+          ]
+        }]
+      })
+    });
+
+    var data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    var text  = (data.content[0] && data.content[0].text) || '';
+    var clean = text.replace(/```json|```/g,'').trim();
+    var result = JSON.parse(clean);
+
+    document.getElementById('scanStatus').innerHTML =
+      '<div class="status-msg info">🎯 Identified: <strong>' + result.cardName + '</strong>'
+      + (result.setName ? ' · ' + result.setName : '')
+      + ' <span style="color:var(--muted)">(' + (result.confidence||'?') + ' confidence)</span></div>';
+
+    document.getElementById('identifyBtn').disabled = false;
+    searchCards(result.cardName, result.setName || '', result.confidence);
+
+  } catch(e) {
+    document.getElementById('scanStatus').innerHTML =
+      '<div class="status-msg err">Identification failed: ' + e.message + '</div>';
+    document.getElementById('identifyBtn').disabled = false;
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// POKEMONTCG.IO SEARCH
+// ════════════════════════════════════════════════════════════
+async function searchCards(cardName, setName, confidence) {
+  var q = 'name:"' + cardName + '"';
+  if (setName) q += ' set.name:"' + setName + '"';
+  var url = 'https://api.pokemontcg.io/v2/cards?q=' + encodeURIComponent(q) + '&pageSize=8';
+
+  try {
+    var res  = await fetch(url);
+    var json = await res.json();
+    if (!json.data || json.data.length === 0) {
+      // Retry without set name
+      if (setName) { searchCards(cardName, '', confidence); return; }
+      showResults([], cardName, confidence);
+      return;
+    }
+    var cards = json.data.map(function(card) {
+      var tcg    = card.tcgplayer || {};
+      var prices = tcg.prices    || {};
+      var norm   = prices.normal           || {};
+      var holo   = prices.holofoil         || {};
+      var rev    = prices.reverseHolofoil  || {};
+      return {
+        id:               card.id || '',
+        name:             card.name || '',
+        set:              (card.set && card.set.name) || '',
+        number:           card.number ? card.number + '/' + ((card.set && card.set.printedTotal) || '?') : '',
+        rarity:           card.rarity || '',
+        type:             (card.types || []).join(', '),
+        hp:               card.hp || '',
+        artist:           card.artist || '',
+        image:            (card.images && card.images.small) || '',
+        imageLg:          (card.images && card.images.large) || '',
+        priceHolo:        String(holo.market || holo.mid || ''),
+        priceNormal:      String(norm.market || norm.mid || ''),
+        priceReverse:     String(rev.market || ''),
+        priceHoloLow:     String(holo.low    || ''),
+        priceHoloMid:     String(holo.mid    || ''),
+        priceHoloMarket:  String(holo.market || ''),
+        priceHoloHigh:    String(holo.high   || ''),
+        priceNormLow:     String(norm.low    || ''),
+        priceNormMid:     String(norm.mid    || ''),
+        priceNormMarket:  String(norm.market || ''),
+        priceNormHigh:    String(norm.high   || ''),
+        priceRevLow:      String(rev.low     || ''),
+        priceRevMid:      String(rev.mid     || ''),
+        priceRevMarket:   String(rev.market  || ''),
+        priceRevHigh:     String(rev.high    || ''),
+        tcgplayerUrl:     String(tcg.url || 'https://www.tcgplayer.com/search/pokemon/product?q=' + encodeURIComponent(card.name || '')),
+        pricechartingUrl: 'https://www.pricecharting.com/search-products?q=' + encodeURIComponent((card.name||'') + (card.set && card.set.name ? ' ' + card.set.name : '')) + '&type=pokemon',
+      };
+    });
+    showResults(cards, cardName, confidence);
+  } catch(e) {
+    document.getElementById('scanStatus').innerHTML =
+      '<div class="status-msg err">Search failed: ' + e.message + '</div>';
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// RESULTS SCREEN
+// ════════════════════════════════════════════════════════════
+function showResults(cards, cardName, confidence) {
+  allCards = cards;
+  selectedCard = null;
+  goTo('results');
+
+  // ID banner
+  var bannerCls = (confidence === 'high') ? 'high' : 'low';
+  var bannerIcon = (confidence === 'high') ? '✅' : '⚠️';
+  document.getElementById('idBanner').innerHTML =
+    '<div class="id-banner ' + bannerCls + '">'
+    + '<div class="id-banner-icon">' + bannerIcon + '</div>'
+    + '<div class="id-banner-text">'
+    + '<div class="id-banner-title">' + cardName + '</div>'
+    + '<div class="id-banner-sub">' + (confidence||'?') + ' confidence · ' + cards.length + ' result(s) found</div>'
+    + '</div></div>';
+
+  if (cards.length === 0) {
+    document.getElementById('resultsList').innerHTML =
+      '<div class="status-msg err">No cards found. Try scanning again with better lighting.</div>';
+    document.getElementById('confirmBtn').disabled = true;
+    return;
+  }
+
+  var h = '';
+  for (var i = 0; i < cards.length; i++) {
+    var c  = cards[i];
+    var pr = c.priceHolo ? '$'+parseFloat(c.priceHolo).toFixed(2) : (c.priceNormal ? '$'+parseFloat(c.priceNormal).toFixed(2) : '');
+    h += '<div class="card-result" id="cr-'+i+'" onclick="pickResult('+i+')">'
+       + (c.image ? '<img class="card-result-img" src="'+c.image+'" onerror="this.src=\'\'">' : '<div class="card-result-img"></div>')
+       + '<div class="card-result-body">'
+       + '<div class="card-result-name">'+c.name+'</div>'
+       + '<div class="card-result-set">'+c.set+' · '+c.number+'</div>'
+       + '<div class="card-result-meta">'+(c.rarity||'')+(c.type?' · '+c.type:'')+(c.hp?' · HP '+c.hp:'')+'</div>'
+       + (pr ? '<div class="card-result-price">'+pr+' (TCGPlayer)</div>' : '')
+       + '</div>'
+       + '<div class="card-result-check" id="chk-'+i+'"></div>'
+       + '</div>';
+  }
+  document.getElementById('resultsList').innerHTML = h;
+  document.getElementById('confirmBtn').disabled = true;
+
+  // Auto-select first result if high confidence
+  if (confidence === 'high' && cards.length > 0) pickResult(0);
+}
+
+function pickResult(i) {
+  document.querySelectorAll('.card-result').forEach(function(el){ el.classList.remove('selected'); });
+  document.querySelectorAll('.card-result-check').forEach(function(el){ el.textContent = ''; });
+  document.getElementById('cr-'+i).classList.add('selected');
+  document.getElementById('chk-'+i).textContent = '✓';
+  selectedCard = allCards[i];
+  document.getElementById('confirmBtn').disabled = false;
+}
+
+function goToInsert() {
+  if (!selectedCard) return;
+  goTo('insert');
+  buildInsertScreen();
+}
+
+// ════════════════════════════════════════════════════════════
+// INSERT SCREEN
+// ════════════════════════════════════════════════════════════
+function buildInsertScreen() {
+  var c = selectedCard;
+  document.getElementById('insertCardPreview').innerHTML =
+    (c.imageLg ? '<img src="'+c.imageLg+'" style="width:64px;border-radius:8px;">' : '')
+    + '<div class="selected-card-preview-body">'
+    + '<div class="selected-card-preview-name">'+c.name+'</div>'
+    + '<div class="selected-card-preview-set">'+c.set+' · '+c.number+'</div>'
+    + '</div>';
+
+  // Foil pills
+  var hasPrices = {
+    holo:    !!(c.priceHoloMarket || c.priceHoloMid || c.priceHoloLow),
+    normal:  !!(c.priceNormMarket || c.priceNormMid  || c.priceNormLow),
+    reverse: !!(c.priceRevMarket  || c.priceRevMid   || c.priceRevLow),
+  };
+  ['holo','normal','reverse'].forEach(function(f){
+    var el = document.getElementById('fp-'+f);
+    el.className = 'foil-pill' + (hasPrices[f] ? '' : ' disabled');
+  });
+  selectedFoil = null;
+  for (var f of ['holo','normal','reverse']) {
+    if (hasPrices[f]) { selectedFoil = f; break; }
+  }
+  if (selectedFoil) {
+    document.getElementById('fp-'+selectedFoil).classList.add('active');
+    renderCondRows();
+  } else {
+    document.getElementById('condRows').innerHTML =
+      '<div class="status-msg info">No price data — Current Value will be left blank.</div>';
+  }
+  document.getElementById('insertStatus').innerHTML = '';
+}
+
+function setFoil(f) {
+  var el = document.getElementById('fp-'+f);
+  if (el.classList.contains('disabled')) return;
+  selectedFoil = f;
+  ['holo','normal','reverse'].forEach(function(x){ document.getElementById('fp-'+x).classList.remove('active'); });
+  el.classList.add('active');
+  selectedPrice = null;
+  renderCondRows();
+}
+
+function renderCondRows() {
+  var keys = PRICE_MAP[selectedFoil];
+  var c    = selectedCard;
+  var h    = '';
+  var autoSel = false;
+
+  CONDITIONS.forEach(function(cond) {
+    var pv  = c[keys[cond.key]] ? parseFloat(c[keys[cond.key]]) : null;
+    var has = pv && pv > 0;
+    var sel = !autoSel && has && cond.key === 'market';
+    if (sel) { autoSel = true; selectedPrice = pv; }
+    h += '<div class="cond-row'+(sel?' sel':'')+(has?'':' na')+'" id="cd-'+cond.key+'"'
+       + (has ? ' onclick="pickCond(\''+cond.key+'\','+pv+')"' : '') + '>'
+       + '<span class="cond-name">'+cond.label+'</span>'
+       + (has ? '<span class="cond-price">$'+pv.toFixed(2)+'</span>' : '<span class="cond-price na">N/A</span>')
+       + '</div>';
+  });
+
+  if (!autoSel) {
+    CONDITIONS.forEach(function(cond) {
+      if (autoSel) return;
+      var pv = c[keys[cond.key]] ? parseFloat(c[keys[cond.key]]) : null;
+      if (pv && pv > 0) { selectedPrice = pv; autoSel = true; pickCond(cond.key, pv); }
+    });
+  }
+
+  h += '<div class="cond-row'+(autoSel?'':' sel')+'" id="cd-none" onclick="pickCond(\'none\',null)">'
+     + '<span class="cond-name">Don\'t fill — enter manually</span>'
+     + '<span class="cond-price na">—</span>'
+     + '</div>';
+
+  document.getElementById('condRows').innerHTML = h;
+  if (!autoSel) selectedPrice = null;
+}
+
+function pickCond(key, val) {
+  document.querySelectorAll('.cond-row').forEach(function(el){ el.classList.remove('sel'); });
+  var el = document.getElementById('cd-'+key);
+  if (el) el.classList.add('sel');
+  selectedPrice = val;
+}
+
+// ════════════════════════════════════════════════════════════
+// WRITE TO GOOGLE SHEETS
+// ════════════════════════════════════════════════════════════
+async function insertCard() {
+  if (!selectedCard) return;
+  document.getElementById('insertBtn').disabled = true;
+  document.getElementById('insertStatus').innerHTML =
+    '<div class="status-msg loading"><span class="spinner"></span>Signing in to Google...</div>';
+
+  ensureGoogleToken(async function() {
+    document.getElementById('insertStatus').innerHTML =
+      '<div class="status-msg loading"><span class="spinner"></span>Adding to your sheet...</div>';
+
+    try {
+      // 1. Get the next empty row
+      var rangeRes = await fetch(
+        'https://sheets.googleapis.com/v4/spreadsheets/'+CFG.sheetId+'/values/Collection!A:A',
+        { headers: { 'Authorization': 'Bearer '+googleToken } }
+      );
+      var rangeData = await rangeRes.json();
+      if (rangeData.error) throw new Error(rangeData.error.message);
+      var nextRow  = Math.max((rangeData.values ? rangeData.values.length : 2) + 1, 3);
+      var cardNum  = nextRow - 2;
+      var c        = selectedCard;
+      var pcUrl    = 'https://www.pricecharting.com/search-products?q=' + encodeURIComponent((c.name||'') + (c.set ? ' '+c.set : '')) + '&type=pokemon';
+
+      // 2. Build row — matches Collection column order exactly
+      // A=Card#,B=Name,C=Set,D=SetNum,E=Rarity,F=Type,G=Condition,H=Foil,
+      // I=Language,J=Qty,K=Purchase$,L=Current$,M=Gain/Loss,N=Location,
+      // O=Page,P=Slot,Q=Graded?,R=Grade,S=PriceCharting,T=TCGPlayer URL
+      var rowValues = [
+        [
+          cardNum,
+          c.name        || '',
+          c.set         || '',
+          c.number      || '',
+          c.rarity      || '',
+          c.type        || '',
+          'Near Mint',
+          '',
+          'EN',
+          1,
+          '',
+          selectedPrice ? selectedPrice.toFixed(2) : '',
+          '',   // Gain/Loss — formula not writable via API, left blank
+          '',   // Location
+          '',   // Page
+          '',   // Slot
+          'No', // Graded?
+          '',   // Grade
+          pcUrl,
+          c.tcgplayerUrl || '',
+        ]
+      ];
+
+      var writeRes = await fetch(
+        'https://sheets.googleapis.com/v4/spreadsheets/'+CFG.sheetId+'/values/Collection!A'+nextRow+'?valueInputOption=USER_ENTERED',
+        {
+          method: 'PUT',
+          headers: { 'Authorization': 'Bearer '+googleToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ range: 'Collection!A'+nextRow, majorDimension: 'ROWS', values: rowValues })
+        }
+      );
+      var writeData = await writeRes.json();
+      if (writeData.error) throw new Error(writeData.error.message);
+
+      document.getElementById('insertStatus').innerHTML =
+        '<div class="status-msg ok">✓ Added as row '+nextRow+' (Card #'+cardNum+')'
+        +(selectedPrice ? ' · Value $'+selectedPrice.toFixed(2) : '')+'</div>';
+      document.getElementById('insertBtn').disabled = false;
+
+    } catch(e) {
+      document.getElementById('insertStatus').innerHTML =
+        '<div class="status-msg err">Failed: '+e.message+'</div>';
+      document.getElementById('insertBtn').disabled = false;
+    }
+  });
+}
+</script>
+</body>
+</html>
