@@ -892,14 +892,11 @@ async function identifyCard() {
     '<div class="status-msg loading"><span class="spinner"></span>Identifying card...</div>';
 
   try {
-    var res = await fetch('https://api.anthropic.com/v1/messages', {
+    var res = await fetch('https://pokemon-proxy.matdulelomo.workers.dev/', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': CFG.anthropicKey,
-        'anthropic-version': '2023-06-01',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        apiKey: CFG.anthropicKey,
         model: 'claude-opus-4-5',
         max_tokens: 256,
         messages: [{
