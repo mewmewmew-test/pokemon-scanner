@@ -1207,9 +1207,85 @@ async function insertCard() {
       var writeData = await writeRes.json();
       if (writeData.error) throw new Error(writeData.error.message);
 
+      // Apply formatting to match existing rows
+      var isAltRow = (nextRow % 2 === 1);
+      var bgColor  = isAltRow
+        ? { red:1.0, green:0.976, blue:0.902 }   // #FFF9E6 warm gold tint
+        : { red:1.0, green:1.0,   blue:1.0 };     // #FFFFFF white
+
+      var totalCols = 22; // A through V
+      var sheetId = 0;    // first sheet — update if Collection is not the first tab
+
+      // Get sheetId for Collection tab
+      var metaRes  = await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+CFG.sheetId+'?fields=sheets.properties',
+        { headers: { 'Authorization': 'Bearer '+googleToken } });
+      var metaData = await metaRes.json();
+      var collectionSheetId = 0;
+      if (metaData.sheets) {
+        metaData.sheets.forEach(function(s){
+          if (s.properties.title === 'Collection') collectionSheetId = s.properties.sheetId;
+        });
+      }
+
+      var rowIndex  = nextRow - 1; // 0-based
+      var formatReq = {
+        requests: [
+          // Background color
+          { repeatCell: {
+            range: { sheetId:collectionSheetId, startRowIndex:rowIndex, endRowIndex:rowIndex+1, startColumnIndex:0, endColumnIndex:totalCols },
+            cell: { userEnteredFormat: { backgroundColor: bgColor } },
+            fields: 'userEnteredFormat.backgroundColor'
+          }},
+          // Font: Arial 10pt, centered
+          { repeatCell: {
+            range: { sheetId:collectionSheetId, startRowIndex:rowIndex, endRowIndex:rowIndex+1, startColumnIndex:0, endColumnIndex:totalCols },
+            cell: { userEnteredFormat: {
+              textFormat: { fontFamily:'Arial', fontSize:10, bold:false },
+              horizontalAlignment: 'CENTER',
+              verticalAlignment: 'MIDDLE',
+            }},
+            fields: 'userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
+          }},
+          // URL cols (S=18, T=19 — 0-based): left aligned, blue
+          { repeatCell: {
+            range: { sheetId:collectionSheetId, startRowIndex:rowIndex, endRowIndex:rowIndex+1, startColumnIndex:18, endColumnIndex:20 },
+            cell: { userEnteredFormat: {
+              textFormat: { fontFamily:'Arial', fontSize:10, bold:false, foregroundColor:{red:0,green:0,blue:0.933} },
+              horizontalAlignment: 'LEFT',
+            }},
+            fields: 'userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment'
+          }},
+          // Border: thin gold on all cells
+          { updateBorders: {
+            range: { sheetId:collectionSheetId, startRowIndex:rowIndex, endRowIndex:rowIndex+1, startColumnIndex:0, endColumnIndex:totalCols },
+            top:    { style:'SOLID', colorStyle:{rgbColor:{red:0.788,green:0.659,blue:0.298}} },
+            bottom: { style:'SOLID', colorStyle:{rgbColor:{red:0.788,green:0.659,blue:0.298}} },
+            left:   { style:'SOLID', colorStyle:{rgbColor:{red:0.788,green:0.659,blue:0.298}} },
+            right:  { style:'SOLID', colorStyle:{rgbColor:{red:0.788,green:0.659,blue:0.298}} },
+            innerHorizontal: { style:'SOLID', colorStyle:{rgbColor:{red:0.788,green:0.659,blue:0.298}} },
+            innerVertical:   { style:'SOLID', colorStyle:{rgbColor:{red:0.788,green:0.659,blue:0.298}} },
+          }},
+          // Row height: 20px
+          { updateDimensionProperties: {
+            range: { sheetId:collectionSheetId, dimension:'ROWS', startIndex:rowIndex, endIndex:rowIndex+1 },
+            properties: { pixelSize: 20 },
+            fields: 'pixelSize'
+          }},
+        ]
+      };
+
+      await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+CFG.sheetId+':batchUpdate',
+        {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer '+googleToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify(formatReq)
+        }
+      );
+
       document.getElementById('insertStatus').innerHTML =
         '<div class="status-msg ok">✓ Added as row '+nextRow+' (Card #'+cardNum+')'
-        +(selectedPrice ? ' · Value $'+selectedPrice.toFixed(2) : '')+'</div>';
+        +(selectedPrice ? ' · $'+selectedPrice.toFixed(2) : '')
+        +' · '+scanDate+'</div>';
       document.getElementById('insertBtn').disabled = false;
 
     } catch(e) {
